@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ARCHITECTURE MANIA!</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#10243a;font-family:Arial,"Noto Sans JP",sans-serif}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none}
+  #hint{position:fixed;bottom:7px;left:0;width:100%;text-align:center;color:#ffffffaa;font-size:12px;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hint">タッチ・マウスで照準を動かし、タップ・クリックで撃とう！</div>
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+let W=innerWidth,H=innerHeight,dpr=1;
+let mode="title",stage=0,timeLeft=0,score=0,finalScore=0;
+let targets=[],particles=[],pointer={x:innerWidth/2,y:innerHeight/2}; let buildProgress=0;
+const names=["基礎工事","柱・梁","内装","建築現場ハチャメチャ"];
+const subtitles=["正しい場所を狙って基礎をつくろう！","柱や梁を狙って建物を組み上げよう！","家具や照明を配置して部屋を完成させよう！","動く的を狙って高得点を目指せ！"];
+const limits=[28,32,35,25];
+
+function resize(){
+ dpr=Math.min(devicePixelRatio||1,2);
+ W=innerWidth;H=innerHeight;
+ canvas.width=W*dpr;canvas.height=H*dpr;
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ pointer.x=W/2;pointer.y=H/2;
+}
+addEventListener("resize",resize);resize();
+
+function text(s,x,y,size,color="#fff",align="center",weight="bold"){
+ ctx.font=`${weight} ${size}px Arial,"Noto Sans JP",sans-serif`;
+ ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline="middle";
+ ctx.fillText(s,x,y);
+}
+function box(x,y,w,h,r,fill,stroke="#49300f",line=3){
+ ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
+ if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.stroke();}
+}
+function button(x,y,w,h,label,fill="#ffc928"){
+ box(x,y,w,h,13,fill);
+ text(label,x+w/2,y+h/2,Math.min(25,w/9),"#17243a");
+}
+function background(a="#51b9ec",b="#e8f7ff"){
+ const g=ctx.createLinearGradient(0,0,0,H);
+ g.addColorStop(0,a);g.addColorStop(1,b);
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+}
+function crosshair(){
+ ctx.save();ctx.strokeStyle="#69ff7a";ctx.lineWidth=4;ctx.shadowColor="#000";ctx.shadowBlur=5;
+ ctx.beginPath();ctx.arc(pointer.x,pointer.y,23,0,Math.PI*2);
+ ctx.moveTo(pointer.x-36,pointer.y);ctx.lineTo(pointer.x-10,pointer.y);
+ ctx.moveTo(pointer.x+10,pointer.y);ctx.lineTo(pointer.x+36,pointer.y);
+ ctx.moveTo(pointer.x,pointer.y-36);ctx.lineTo(pointer.x,pointer.y-10);
+ ctx.moveTo(pointer.x,pointer.y+10);ctx.lineTo(pointer.x,pointer.y+36);
+ ctx.stroke();ctx.restore();
+}
+function drawCannon(){
+ ctx.save();ctx.translate(W/2,H+15);
+ ctx.rotate((pointer.x-W/2)/W*.22);
+ ctx.fillStyle="#183b73";ctx.beginPath();ctx.roundRect(-43,-120,86,150,25);ctx.fill();
+ ctx.fillStyle="#f2ac20";ctx.beginPath();ctx.roundRect(-25,-135,50,118,18);ctx.fill();
+ ctx.fillStyle="#bb3428";ctx.beginPath();ctx.arc(0,-135,23,0,Math.PI*2);ctx.fill();
+ ctx.restore();
+}
+function drawTarget(t){
+ ctx.save(); const s=.88+.14*(Math.sin(performance.now()/220+t.pulse)+1)/2; ctx.translate(t.x,t.y);ctx.scale(s,s);ctx.rotate(t.rotation);
+ ctx.shadowColor="#0006";ctx.shadowBlur=10;
+ for(const [r,c] of [[t.r,"#fff"],[t.r*.72,"#e84b35"],[t.r*.45,"#fff"],[t.r*.20,"#e84b35"]]){
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill();
+ }
+ ctx.restore();
+}
+function createTargets(){
+ targets=[];
+ const count=[7,8,9,10][stage];
+ for(let i=0;i<count;i++){
+  targets.push({
+   x:W*(.08+Math.random()*.84),
+   y:H*(.23+Math.random()*.45),
+   r:24+Math.random()*14,
+   vx:(Math.random()-.5)*(stage===3?240:100),
+   vy:(Math.random()-.5)*(stage===3?110:50),
+   rotation:Math.random()*.2-.1, pulse:Math.random()*6.28,
+   value:i%5===0?300:100,
+   alive:true
+  });
+ }
+}
+function startStage(n){
+ stage=n;timeLeft=limits[n];buildProgress=0;createTargets();mode="play";
+}
+function reset(){score=0;finalScore=0;startStage(0);}
+function titleScreen(){
+ background("#39aaf0","#eaf8ff");
+ ctx.fillStyle="#8bc6db";
+ for(let i=0;i<12;i++){let h=80+Math.random()*120;ctx.fillRect(i*W/11,H*.56-h,65,h);}
+ box(W*.07,H*.08,W*.86,H*.27,24,"#fff3d0");
+ text("ARCHITECTURE",W/2,H*.16,Math.min(58,W*.075),"#1760ae");
+ text("MANIA!",W/2,H*.27,Math.min(70,W*.095),"#e84b31");
+ text("〜 キミの手で、未来の家をつくろう！ 〜",W/2,H*.38,Math.min(21,W*.03),"#243b51");
+ button(W*.25,H*.56,W*.5,60,"ゲームスタート！");
+ button(W*.25,H*.56+76,W*.5,60,"あそびかた","#4ca8f5");
+ text("建築科 文化祭スペシャル",W/2,H*.88,18,"#243b51");
+}
+function howScreen(){
+ background("#173f64","#7bcdec");
+ text("あそびかた",W/2,70,42);
+ const rows=[
+  ["① 狙う","マウス・タッチで照準を動かす"],
+  ["② 撃つ","クリック・タップで発射！"],
+  ["③ 建てる","的に当てるほどスコアアップ"],
+  ["④ 完成","4ステージ終了で家が完成"]
+ ];
+ rows.forEach((r,i)=>{
+  const y=145+i*83;
+  box(W*.10,y,W*.80,64,15,"#ffffffe8",null,0);
+  text(r[0],W*.22,y+32,21,"#e24b31","left");
+  text(r[1],W*.30,y+32,17,"#17314a","left","normal");
+ });
+ button(W*.28,H-90,W*.44,58,"タイトルへ");
+}
+function playBackground(){
+ if(stage===0){
+  background("#62bee9","#e8f6fc");
+  ctx.fillStyle="#a77b53";ctx.fillRect(0,H*.72,W,H*.28);
+  for(let i=0;i<5;i++){ctx.fillStyle="#d8d0c4";ctx.fillRect(W*.12+i*W*.18,H*.66,90,45);}
+ }else if(stage===1){
+  background("#65bee8","#e8f6fc");
+  ctx.fillStyle="#956845";ctx.fillRect(0,H*.73,W,H*.27);
+  ctx.strokeStyle="#70462c";ctx.lineWidth=13;ctx.beginPath();
+  ctx.moveTo(W*.15,H*.73);ctx.lineTo(W*.15,H*.28);ctx.lineTo(W*.82,H*.28);ctx.lineTo(W*.82,H*.73);
+  ctx.moveTo(W*.15,H*.45);ctx.lineTo(W*.82,H*.45);
+  ctx.moveTo(W*.15,H*.28);ctx.lineTo(W*.48,H*.50);ctx.lineTo(W*.82,H*.28);ctx.stroke();
+ }else if(stage===2){
+  background("#caa47c","#f0dfc8");
+  ctx.fillStyle="#ead8bd";ctx.fillRect(W*.12,H*.27,W*.76,H*.56);
+  ctx.fillStyle="#7b543c";ctx.fillRect(W*.12,H*.27,W*.76,14);
+  ctx.fillStyle="#8dd4ee";ctx.fillRect(W*.60,H*.39,W*.18,H*.20);
+  ctx.fillStyle="#79533b";ctx.fillRect(W*.18,H*.64,W*.24,20);
+ }else{
+  background("#58b7e5","#dceff5");
+  ctx.fillStyle="#8e8e87";ctx.fillRect(0,H*.73,W,H*.27);
+  ctx.fillStyle="#d4c158";
+  for(let i=0;i<8;i++)ctx.fillRect(i*W/8,H*.73,W/16,16);
+  ctx.strokeStyle="#60656b";ctx.lineWidth=8;ctx.beginPath();
+  ctx.moveTo(W*.15,H*.73);ctx.lineTo(W*.15,H*.18);ctx.lineTo(W*.70,H*.18);ctx.stroke();
+  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(W*.15,H*.18);ctx.lineTo(W*.70,H*.42);ctx.stroke();
+ }
+}
+function playScreen(){
+ playBackground();
+ box(14,14,155,54,12,"#17243ddd",null,0);text("TIME "+Math.ceil(timeLeft),91,41,24,"#ffd53d");
+ box(W-190,14,176,54,12,"#17243ddd",null,0);text("SCORE "+score,W-102,41,22,"#fff");
+ text((stage+1)+" / 4  "+names[stage],W/2,H*.12,23,"#fff");
+ text(subtitles[stage],W/2,H*.17,17,"#17314a");
+ targets.forEach(t=>{if(t.alive)drawTarget(t);});
+ particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life/.7);ctx.fillStyle="#ffd44a";ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
+ crosshair();drawCannon();
+}
+function resultScreen(){
+ background("#2d77b9","#d9f2ff");
+ box(W*.06,H*.07,W*.88,H*.84,26,"#fffffff0");
+ text("あなたの家が完成しました！",W/2,H*.16,Math.min(36,W*.052),"#e33f2c");
+ text("総合スコア",W*.30,H*.27,20,"#263b52");
+ text(finalScore+" 点",W*.30,H*.34,40,"#e6a900");
+ const rows=[["基礎",1],["構造",2],["内装",3],["デザイン",4]];
+ rows.forEach((r,i)=>{
+  const stars=Math.max(1,Math.min(5,Math.ceil(finalScore/(i===0?900:i===1?1600:i===2?2500:3500))));
+  const y=H*.45+i*42;
+  text(r[0],W*.26,y,20,"#263b52");
+  text("★".repeat(stars)+"☆".repeat(5-stars),W*.55,y,24,"#e6a900");
+ });
+ const hx=W*.67,hy=H*.67;
+ ctx.fillStyle="#e6c7a5";ctx.fillRect(hx-115,hy-85,230,125);
+ ctx.fillStyle="#6d4b35";ctx.beginPath();ctx.moveTo(hx-140,hy-85);ctx.lineTo(hx,hy-175);ctx.lineTo(hx+140,hy-85);ctx.closePath();ctx.fill();
+ ctx.fillStyle="#8bd4ef";ctx.fillRect(hx-85,hy-55,60,55);ctx.fillRect(hx+25,hy-55,60,55);
+ ctx.fillStyle="#65412f";ctx.fillRect(hx-18,hy-55,36,95);
+ text("未来の建築家はキミだ！",W*.34,H*.72,17,"#263b52");
+ button(W*.18,H*.83,W*.30,55,"もう一度あそぶ");
+ button(W*.53,H*.83,W*.30,55,"タイトルへ","#4ca8f5");
+}
+function update(dt){
+ if(mode!=="play")return;
+ particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=240*dt;p.life-=dt;});
+ particles=particles.filter(p=>p.life>0);
+ timeLeft-=dt;
+ targets.forEach(t=>{
+  if(!t.alive)return;
+  t.x+=t.vx*dt;t.y+=t.vy*dt;
+  if(t.x<t.r||t.x>W-t.r)t.vx*=-1;
+  if(t.y<H*.21||t.y>H*.70)t.vy*=-1;
+ });
+ if(timeLeft<=0){
+  if(stage<3){startStage(stage+1);}
+  else{finalScore=score;mode="result";}
+ }
+}
+function shoot(){
+ if(mode!=="play")return;
+ let chosen=null,nearest=Infinity;
+ targets.forEach(t=>{
+  if(!t.alive)return;
+  const d=Math.hypot(pointer.x-t.x,pointer.y-t.y);
+  if(d<t.r&&d<nearest){nearest=d;chosen=t;}
+ });
+ if(chosen){
+      chosen.alive=false;score+=chosen.value;buildProgress++;
+      for(let i=0;i<16;i++)particles.push({x:chosen.x,y:chosen.y,vx:(Math.random()-.5)*240,vy:(Math.random()-.5)*240,life:.7,size:3+Math.random()*4});
+    }
+ else score=Math.max(0,score-10);
+}
+function movePointer(e){
+ const rect=canvas.getBoundingClientRect();
+ pointer.x=e.clientX-rect.left;pointer.y=e.clientY-rect.top;
+}
+canvas.addEventListener("pointermove",movePointer);
+canvas.addEventListener("pointerdown",e=>{
+ movePointer(e);
+ if(mode==="title"){
+  if(pointer.y>H*.53&&pointer.y<H*.65)reset();
+  else if(pointer.y>H*.65&&pointer.y<H*.82)mode="how";
+ }else if(mode==="how"){
+  if(pointer.y>H-125)mode="title";
+ }else if(mode==="play"){shoot();}
+ else if(mode==="result"){
+  if(pointer.y>H*.80&&pointer.x<W*.5)reset();
+  else if(pointer.y>H*.80)mode="title";
+ }
+});
+addEventListener("keydown",e=>{
+ if(e.code==="Space")shoot();
+ if(e.code==="Escape")mode="title";
+});
+let previous=performance.now();
+function loop(now){
+ const dt=Math.min((now-previous)/1000,.05);previous=now;
+ ctx.clearRect(0,0,W,H);
+ if(mode==="title")titleScreen();
+ else if(mode==="how")howScreen();
+ else if(mode==="play"){update(dt);playScreen();}
+ else resultScreen();
+ requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
