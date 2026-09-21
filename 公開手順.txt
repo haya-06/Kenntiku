@@ -1,8 +1,10 @@
-GitHub Pages公開手順
+【Joy-Con接続手順】
+1. iPadの設定→Bluetoothを開く
+2. Joy-Con側面のSYNCボタンを長押し
+3. Bluetooth一覧からJoy-Conを選択
+4. ゲームをブラウザで開く
+5. 画面を一度タップし、スティックを動かす
+6. 画面の「コントローラー」が「接続中」なら使用可能
 
-1. GitHubで新しいRepositoryを作成
-2. index.html、README.md、公開手順.txtの3ファイルをアップロード
-3. Settings → Pages
-4. SourceでDeploy from a branchを選択
-5. Branchをmain、フォルダを/(root)にしてSave
-6. 表示されたURLを開く
+操作：スティック＝照準、A/B＝発射、タッチ＝発射
+※対応状況はiPadOS・ブラウザによって異なります。

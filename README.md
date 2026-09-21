@@ -1,9 +1,5 @@
-# ARCHITECTURE MANIA!
+# ARCHITECTURE MANIA! Joy-Con対応版
 
-建築科文化祭向けのシューティングゲームです。
+Joy-Conスティックで照準、A/Bボタンで発射。タッチ操作も利用できます。
 
-## GitHub Pagesで公開する方法
-1. このフォルダ内の `index.html` をGitHubリポジトリにアップロードします。
-2. Settings → Pages を開きます。
-3. Deploy from a branch を選び、main / root を指定します。
-4. Saveを押して、発行されたURLを開きます。
+Joy-Conの認識はiPadOS・ブラウザにより異なる場合があります。

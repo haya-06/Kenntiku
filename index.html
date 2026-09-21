@@ -1,253 +1,161 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ARCHITECTURE MANIA!</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ARCHITECTURE MANIA! REAL BUILD</title>
 <style>
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:#10243a;font-family:Arial,"Noto Sans JP",sans-serif}
-  canvas{display:block;width:100vw;height:100vh;touch-action:none}
-  #hint{position:fixed;bottom:7px;left:0;width:100%;text-align:center;color:#ffffffaa;font-size:12px;pointer-events:none}
+:root{--ink:#102238;--blue:#0c3f78;--gold:#ffc928;--red:#ef4a31}
+*{box-sizing:border-box}
+html,body{margin:0;background:#071522;color:white;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;overflow:hidden}
+body{touch-action:none}
+#app{height:100dvh;display:grid;place-items:center;background:radial-gradient(circle at 50% 0,#4e88bd,#071522 72%)}
+#game{position:relative;width:min(100vw,177.78dvh);height:min(100dvh,56.25vw);overflow:hidden;background:#9ed4f3;border:3px solid #19334e;box-shadow:0 0 0 5px #e8bd50,0 18px 70px #0008}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+.hud{position:absolute;left:1.2%;right:1.2%;top:1.2%;display:flex;gap:8px;justify-content:space-between;pointer-events:none;font-weight:900;text-shadow:0 2px 2px #0008}
+.pill{background:linear-gradient(#173b61,#0b2038);border:2px solid #e6c15a;border-radius:10px;padding:7px 12px;min-width:110px;box-shadow:0 3px 0 #0005}
+.pill small{display:block;font-size:10px;color:#b9d8ef}.pill b{font-size:23px;color:#ffe36a}
+#stageName{min-width:220px;text-align:center}
+#message{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+#message .panel{background:#09243ddd;border:3px solid #f4ce62;border-radius:18px;padding:22px 34px;text-align:center;box-shadow:0 10px 30px #0008}
+#message h1{margin:0 0 8px;font-size:clamp(24px,4vw,58px);color:#ffe06a;text-shadow:3px 3px #13283e}
+#message p{margin:5px 0;font-size:clamp(13px,1.5vw,22px)}
+button{border:0;border-radius:12px;padding:13px 28px;margin:8px;font-size:18px;font-weight:900;cursor:pointer;color:#14263b;background:linear-gradient(#ffe36c,#edaa1b);box-shadow:0 4px 0 #9b6411}
+button.secondary{background:linear-gradient(#62b5ff,#2364bc);color:white}
+.hidden{display:none!important}
+#hint{position:absolute;bottom:1.5%;left:50%;transform:translateX(-50%);background:#071b2ccc;border:1px solid #ffffff55;border-radius:999px;padding:6px 15px;font-size:12px;pointer-events:none}
+@media(max-width:650px){.pill{min-width:70px;padding:4px 6px}.pill b{font-size:16px}.pill small{font-size:8px}#stageName{min-width:90px}.hint{font-size:10px}}
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-<div id="hint">タッチ・マウスで照準を動かし、タップ・クリックで撃とう！</div>
+<div id="app">
+<div id="game">
+<canvas id="cv" width="1280" height="720"></canvas>
+<div class="hud">
+  <div class="pill"><small>のこり時間</small><b id="time">12.0</b><small>SEC</small></div>
+  <div class="pill" id="stageName"><small>STAGE</small><b id="stage">1 / 4</b></div>
+  <div class="pill"><small>スコア</small><b id="score">00000</b></div>
+  <div class="pill"><small>建築進行</small><b id="build">0%</b></div><div class="pill"><small>コントローラー</small><b id="pad">未接続</b></div>
+</div>
+<div id="message">
+  <div class="panel">
+    <h1 id="title">ARCHITECTURE MANIA!</h1>
+    <p id="desc">動く的を狙って、未来の家を完成させよう！</p>
+    <button id="start">ゲームスタート</button>
+    <button class="secondary" id="how">あそびかた</button>
+  </div>
+</div>
+<div id="hint">クリック / タップで発射　｜　Joy-Con：スティックで照準・A/Bボタンで発射</div>
+</div>
+</div>
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-let W=innerWidth,H=innerHeight,dpr=1;
-let mode="title",stage=0,timeLeft=0,score=0,finalScore=0;
-let targets=[],particles=[],pointer={x:innerWidth/2,y:innerHeight/2}; let buildProgress=0;
-const names=["基礎工事","柱・梁","内装","建築現場ハチャメチャ"];
-const subtitles=["正しい場所を狙って基礎をつくろう！","柱や梁を狙って建物を組み上げよう！","家具や照明を配置して部屋を完成させよう！","動く的を狙って高得点を目指せ！"];
-const limits=[28,32,35,25];
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const W=cv.width,H=cv.height;
+const $=id=>document.getElementById(id);
+const stages=[
+ {name:'基礎工事ステージ',sub:'正しい場所を狙って、基礎をつくろう！',sky:'#8ec8ed',ground:'#a7774e',rate:520,speed:1.0,goal:12},
+ {name:'柱・梁ステージ',sub:'柱や梁を狙って、建物を組み上げよう！',sky:'#76b6df',ground:'#a67b55',rate:450,speed:1.25,goal:15},
+ {name:'内装ステージ',sub:'家具や照明を狙って、部屋をコーディネート！',sky:'#d6b58b',ground:'#8d6c52',rate:390,speed:1.55,goal:17},
+ {name:'建築現場ハチャメチャステージ',sub:'動きの速い的を狙って高得点を目指せ！',sky:'#72b2dc',ground:'#75634e',rate:300,speed:1.9,goal:20}
+];
+let running=false,stageIndex=0,score=0,stageScore=0,timeLeft=12,targets=[],particles=[],last=0,spawnClock=0,shots=0,hits=0,build=0,mouse={x:W/2,y:H/2},stageEnd=false;
+const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function resizePointer(e){const r=cv.getBoundingClientRect();mouse.x=(e.clientX-r.left)/r.width*W;mouse.y=(e.clientY-r.top)/r.height*H}
+cv.addEventListener('pointermove',resizePointer);
+cv.addEventListener('pointerdown',e=>{if(!running)return;resizePointer(e);shoot()});
+$('start').onclick=()=>{startGame()};
+$('how').onclick=()=>{ $('title').textContent='あそびかた';$('desc').innerHTML='的は次々に出現します。赤い中心をクリック／タップ！<br>各ステージ12秒。後半ほど速く、小さくなります。';$('start').textContent='スタート';$('how').classList.add('hidden')};
+let activePad=null, padCooldown=0, lastPadFire=false;
+function pollGamepad(dt){
+ const pads=navigator.getGamepads?navigator.getGamepads():[]; activePad=null;
+ for(const p of pads){if(p){activePad=p;break}}
+ $('pad').textContent=activePad?'接続中':'未接続'; if(!activePad)return;
+ const ax=activePad.axes?.[0]||0, ay=activePad.axes?.[1]||0, dead=.18;
+ if(Math.abs(ax)>dead)mouse.x=clamp(mouse.x+ax*dt*720,25,W-25);
+ if(Math.abs(ay)>dead)mouse.y=clamp(mouse.y+ay*dt*520,145,H-25);
+ padCooldown=Math.max(0,padCooldown-dt);
+ const b=activePad.buttons||[], fire=!!(b[0]?.pressed||b[1]?.pressed);
+ if(fire&&!lastPadFire&&padCooldown<=0){shoot();padCooldown=.16} lastPadFire=fire;
+}
+window.addEventListener('gamepadconnected',()=>{$('pad').textContent='接続中'});
+window.addEventListener('gamepaddisconnected',()=>{$('pad').textContent='未接続';activePad=null});
+const keys={};
+window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))e.preventDefault()});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+const basePollGamepad=pollGamepad;
+pollGamepad=function(dt){
+ basePollGamepad(dt); const speed=520;
+ if(keys['arrowleft']||keys['a'])mouse.x=clamp(mouse.x-speed*dt,25,W-25);
+ if(keys['arrowright']||keys['d'])mouse.x=clamp(mouse.x+speed*dt,25,W-25);
+ if(keys['arrowup']||keys['w'])mouse.y=clamp(mouse.y-speed*dt,145,H-25);
+ if(keys['arrowdown']||keys['s'])mouse.y=clamp(mouse.y+speed*dt,145,H-25);
+ if(keys[' ']&&padCooldown<=0){shoot();padCooldown=.16}
+};
 
-function resize(){
- dpr=Math.min(devicePixelRatio||1,2);
- W=innerWidth;H=innerHeight;
- canvas.width=W*dpr;canvas.height=H*dpr;
- ctx.setTransform(dpr,0,0,dpr,0,0);
- pointer.x=W/2;pointer.y=H/2;
+function startGame(){stageIndex=0;score=0;build=0;startStage();$('message').classList.add('hidden')}
+function startStage(){running=true;stageScore=0;timeLeft=12;targets=[];particles=[];spawnClock=0;shots=0;hits=0;stageEnd=false;last=performance.now();$('stage').textContent=(stageIndex+1)+' / 4';$('stageName').querySelector('small').textContent=stages[stageIndex].name;$('time').textContent='12.0';$('score').textContent=String(score).padStart(5,'0');$('build').textContent=build+'%';requestAnimationFrame(loop)}
+function makeTarget(){const s=stages[stageIndex];let type=Math.random();let r=type<.22?22:rand(25,38);if(stageIndex>=2)r*=rand(.7,1);let side=Math.floor(rand(0,4));let x,y,vx,vy;
+ if(side===0){x=rand(60,W-60);y=rand(145,220);vx=rand(-.8,.8)*s.speed;vy=rand(.5,1.2)*s.speed}
+ if(side===1){x=rand(60,W-60);y=rand(450,650);vx=rand(-.8,.8)*s.speed;vy=-rand(.5,1.2)*s.speed}
+ if(side===2){x=rand(45,180);y=rand(210,590);vx=rand(.8,1.7)*s.speed;vy=rand(-.6,.6)*s.speed}
+ if(side===3){x=rand(W-180,W-45);y=rand(210,590);vx=-rand(.8,1.7)*s.speed;vy=rand(-.6,.6)*s.speed}
+ targets.push({x,y,vx,vy,r,life:rand(2.0,3.4),age:0,phase:rand(0,6.28),value:Math.round(60+(42-r)*2+(stageIndex*25)),kind:Math.floor(rand(0,4))})}
+function shoot(){shots++;for(let i=targets.length-1;i>=0;i--){let t=targets[i],d=Math.hypot(mouse.x-t.x,mouse.y-t.y);if(d<t.r*1.15){hits++;score+=t.value;stageScore+=t.value;build=clamp(Math.floor(score/35),0,100);burst(t.x,t.y);targets.splice(i,1);return}}burst(mouse.x,mouse.y,true)}
+function burst(x,y,miss=false){for(let i=0;i<(miss?5:16);i++)particles.push({x,y,vx:rand(-3,3),vy:rand(-3,3),life:rand(.25,.6),c:miss?'#cfe9ff':'#ffe06a',size:rand(2,5)})}
+function update(dt){pollGamepad(dt);const s=stages[stageIndex];timeLeft-=dt;spawnClock+=dt*1000;
+ let interval=s.rate*(stageIndex===3?rand(.7,1):1);
+ if(spawnClock>interval){spawnClock=0;makeTarget();if(Math.random()<.24+stageIndex*.07)makeTarget()}
+ for(let i=targets.length-1;i>=0;i--){let t=targets[i];t.age+=dt;t.x+=t.vx*dt*60;t.y+=t.vy*dt*60;t.phase+=dt*4;
+  if(t.x<30||t.x>W-30)t.vx*=-1;if(t.y<150||t.y>H-40)t.vy*=-1;
+  if(t.age>t.life){targets.splice(i,1)}
+ }
+ for(let i=particles.length-1;i>=0;i--){let p=particles[i];p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.vy+=.06;p.life-=dt;if(p.life<=0)particles.splice(i,1)}
+ if(timeLeft<=0)finishStage();
 }
-addEventListener("resize",resize);resize();
-
-function text(s,x,y,size,color="#fff",align="center",weight="bold"){
- ctx.font=`${weight} ${size}px Arial,"Noto Sans JP",sans-serif`;
- ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline="middle";
- ctx.fillText(s,x,y);
+function drawBackground(){const s=stages[stageIndex];let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,s.sky);g.addColorStop(.64,'#c8e1e9');g.addColorStop(1,'#6e8190');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ // distant skyline
+ ctx.fillStyle='#537a91';for(let x=0;x<W;x+=rand(55,95)){let h=rand(55,160);ctx.fillRect(x,280-h,rand(35,75),h)}
+ ctx.fillStyle='#d7b57a';ctx.beginPath();ctx.moveTo(0,520);ctx.lineTo(W*.2,440);ctx.lineTo(W*.42,510);ctx.lineTo(W*.63,420);ctx.lineTo(W,500);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+ // ground
+ ctx.fillStyle=s.ground;ctx.fillRect(0,520,W,200);
+ ctx.strokeStyle='#5b493d';ctx.lineWidth=2;for(let y=540;y<720;y+=35){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y+rand(-8,8));ctx.stroke()}
+ // cranes
+ ctx.strokeStyle='#8b5d35';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(110,520);ctx.lineTo(110,90);ctx.lineTo(460,90);ctx.moveTo(280,90);ctx.lineTo(280,40);ctx.stroke();
+ ctx.strokeStyle='#e6b33b';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(110,120);ctx.lineTo(460,120);ctx.lineTo(420,160);ctx.stroke();
+ // central construction frame evolves
+ const p=(stageIndex+1)/4;
+ ctx.strokeStyle='#6c482f';ctx.lineWidth=18;ctx.beginPath();
+ ctx.moveTo(300,520);ctx.lineTo(300,330);ctx.lineTo(980,330);ctx.lineTo(980,520);
+ if(stageIndex>=1){ctx.moveTo(300,330);ctx.lineTo(640,180);ctx.lineTo(980,330);ctx.moveTo(640,180);ctx.lineTo(640,520)}
+ if(stageIndex>=2){ctx.lineWidth=9;ctx.moveTo(340,390);ctx.lineTo(940,390);ctx.moveTo(450,330);ctx.lineTo(450,520);ctx.moveTo(820,330);ctx.lineTo(820,520)}
+ ctx.stroke();
+ if(stageIndex===2){ctx.fillStyle='#ead7bd';ctx.fillRect(330,350,600,170);ctx.fillStyle='#6b9bb6';ctx.fillRect(520,385,115,100);ctx.fillRect(700,385,115,100);ctx.fillStyle='#d5ad6d';ctx.fillRect(360,430,100,70);ctx.fillRect(835,430,65,70)}
+ if(stageIndex===3){ctx.fillStyle='#f0c74b';ctx.fillRect(0,570,160,35);ctx.fillStyle='#394f5b';ctx.fillRect(35,535,90,35);ctx.fillStyle='#d5d8d9';ctx.fillRect(1040,570,180,20);ctx.fillStyle='#b65b39';ctx.fillRect(1080,540,90,30)}
+ // vignette
+ const v=ctx.createRadialGradient(W/2,H/2,180,W/2,H/2,700);v.addColorStop(0,'#0000');v.addColorStop(1,'#06132155');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
 }
-function box(x,y,w,h,r,fill,stroke="#49300f",line=3){
- ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
- if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.stroke();}
-}
-function button(x,y,w,h,label,fill="#ffc928"){
- box(x,y,w,h,13,fill);
- text(label,x+w/2,y+h/2,Math.min(25,w/9),"#17243a");
-}
-function background(a="#51b9ec",b="#e8f7ff"){
- const g=ctx.createLinearGradient(0,0,0,H);
- g.addColorStop(0,a);g.addColorStop(1,b);
- ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-}
-function crosshair(){
- ctx.save();ctx.strokeStyle="#69ff7a";ctx.lineWidth=4;ctx.shadowColor="#000";ctx.shadowBlur=5;
- ctx.beginPath();ctx.arc(pointer.x,pointer.y,23,0,Math.PI*2);
- ctx.moveTo(pointer.x-36,pointer.y);ctx.lineTo(pointer.x-10,pointer.y);
- ctx.moveTo(pointer.x+10,pointer.y);ctx.lineTo(pointer.x+36,pointer.y);
- ctx.moveTo(pointer.x,pointer.y-36);ctx.lineTo(pointer.x,pointer.y-10);
- ctx.moveTo(pointer.x,pointer.y+10);ctx.lineTo(pointer.x,pointer.y+36);
- ctx.stroke();ctx.restore();
-}
-function drawCannon(){
- ctx.save();ctx.translate(W/2,H+15);
- ctx.rotate((pointer.x-W/2)/W*.22);
- ctx.fillStyle="#183b73";ctx.beginPath();ctx.roundRect(-43,-120,86,150,25);ctx.fill();
- ctx.fillStyle="#f2ac20";ctx.beginPath();ctx.roundRect(-25,-135,50,118,18);ctx.fill();
- ctx.fillStyle="#bb3428";ctx.beginPath();ctx.arc(0,-135,23,0,Math.PI*2);ctx.fill();
+function drawTarget(t){let pulse=1+Math.sin(t.phase)*.08, r=t.r*pulse;ctx.save();ctx.translate(t.x,t.y);
+ ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.shadowOffsetY=5;
+ ctx.fillStyle='#f8f8ed';ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();
+ ctx.shadowColor='transparent';ctx.lineWidth=Math.max(3,r*.12);ctx.strokeStyle='#bd2b1d';ctx.stroke();
+ ctx.fillStyle='#ef4630';ctx.beginPath();ctx.arc(0,0,r*.57,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#fff9e9';ctx.beginPath();ctx.arc(0,0,r*.28,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#b81f19';ctx.beginPath();ctx.arc(0,0,r*.12,0,Math.PI*2);ctx.fill();
+ // tiny depth shadow and label
+ ctx.fillStyle='#162a3a';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('+'+t.value,0,r+19);
  ctx.restore();
 }
-function drawTarget(t){
- ctx.save(); const s=.88+.14*(Math.sin(performance.now()/220+t.pulse)+1)/2; ctx.translate(t.x,t.y);ctx.scale(s,s);ctx.rotate(t.rotation);
- ctx.shadowColor="#0006";ctx.shadowBlur=10;
- for(const [r,c] of [[t.r,"#fff"],[t.r*.72,"#e84b35"],[t.r*.45,"#fff"],[t.r*.20,"#e84b35"]]){
-  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.fillStyle=c;ctx.fill();
- }
- ctx.restore();
+function draw(){drawBackground();targets.forEach(drawTarget);
+ particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life*2);ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1});
+ // blaster
+ ctx.save();ctx.translate(mouse.x,mouse.y);ctx.strokeStyle='#69ffb1';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,20,0,Math.PI*2);ctx.moveTo(-34,0);ctx.lineTo(-10,0);ctx.moveTo(10,0);ctx.lineTo(34,0);ctx.moveTo(0,-34);ctx.lineTo(0,-10);ctx.moveTo(0,10);ctx.lineTo(0,34);ctx.stroke();ctx.fillStyle='#69ffb1';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();ctx.restore();
+ $('time').textContent=Math.max(0,timeLeft).toFixed(1);$('score').textContent=String(score).padStart(5,'0');$('build').textContent=build+'%';
 }
-function createTargets(){
- targets=[];
- const count=[7,8,9,10][stage];
- for(let i=0;i<count;i++){
-  targets.push({
-   x:W*(.08+Math.random()*.84),
-   y:H*(.23+Math.random()*.45),
-   r:24+Math.random()*14,
-   vx:(Math.random()-.5)*(stage===3?240:100),
-   vy:(Math.random()-.5)*(stage===3?110:50),
-   rotation:Math.random()*.2-.1, pulse:Math.random()*6.28,
-   value:i%5===0?300:100,
-   alive:true
-  });
- }
-}
-function startStage(n){
- stage=n;timeLeft=limits[n];buildProgress=0;createTargets();mode="play";
-}
-function reset(){score=0;finalScore=0;startStage(0);}
-function titleScreen(){
- background("#39aaf0","#eaf8ff");
- ctx.fillStyle="#8bc6db";
- for(let i=0;i<12;i++){let h=80+Math.random()*120;ctx.fillRect(i*W/11,H*.56-h,65,h);}
- box(W*.07,H*.08,W*.86,H*.27,24,"#fff3d0");
- text("ARCHITECTURE",W/2,H*.16,Math.min(58,W*.075),"#1760ae");
- text("MANIA!",W/2,H*.27,Math.min(70,W*.095),"#e84b31");
- text("〜 キミの手で、未来の家をつくろう！ 〜",W/2,H*.38,Math.min(21,W*.03),"#243b51");
- button(W*.25,H*.56,W*.5,60,"ゲームスタート！");
- button(W*.25,H*.56+76,W*.5,60,"あそびかた","#4ca8f5");
- text("建築科 文化祭スペシャル",W/2,H*.88,18,"#243b51");
-}
-function howScreen(){
- background("#173f64","#7bcdec");
- text("あそびかた",W/2,70,42);
- const rows=[
-  ["① 狙う","マウス・タッチで照準を動かす"],
-  ["② 撃つ","クリック・タップで発射！"],
-  ["③ 建てる","的に当てるほどスコアアップ"],
-  ["④ 完成","4ステージ終了で家が完成"]
- ];
- rows.forEach((r,i)=>{
-  const y=145+i*83;
-  box(W*.10,y,W*.80,64,15,"#ffffffe8",null,0);
-  text(r[0],W*.22,y+32,21,"#e24b31","left");
-  text(r[1],W*.30,y+32,17,"#17314a","left","normal");
- });
- button(W*.28,H-90,W*.44,58,"タイトルへ");
-}
-function playBackground(){
- if(stage===0){
-  background("#62bee9","#e8f6fc");
-  ctx.fillStyle="#a77b53";ctx.fillRect(0,H*.72,W,H*.28);
-  for(let i=0;i<5;i++){ctx.fillStyle="#d8d0c4";ctx.fillRect(W*.12+i*W*.18,H*.66,90,45);}
- }else if(stage===1){
-  background("#65bee8","#e8f6fc");
-  ctx.fillStyle="#956845";ctx.fillRect(0,H*.73,W,H*.27);
-  ctx.strokeStyle="#70462c";ctx.lineWidth=13;ctx.beginPath();
-  ctx.moveTo(W*.15,H*.73);ctx.lineTo(W*.15,H*.28);ctx.lineTo(W*.82,H*.28);ctx.lineTo(W*.82,H*.73);
-  ctx.moveTo(W*.15,H*.45);ctx.lineTo(W*.82,H*.45);
-  ctx.moveTo(W*.15,H*.28);ctx.lineTo(W*.48,H*.50);ctx.lineTo(W*.82,H*.28);ctx.stroke();
- }else if(stage===2){
-  background("#caa47c","#f0dfc8");
-  ctx.fillStyle="#ead8bd";ctx.fillRect(W*.12,H*.27,W*.76,H*.56);
-  ctx.fillStyle="#7b543c";ctx.fillRect(W*.12,H*.27,W*.76,14);
-  ctx.fillStyle="#8dd4ee";ctx.fillRect(W*.60,H*.39,W*.18,H*.20);
-  ctx.fillStyle="#79533b";ctx.fillRect(W*.18,H*.64,W*.24,20);
- }else{
-  background("#58b7e5","#dceff5");
-  ctx.fillStyle="#8e8e87";ctx.fillRect(0,H*.73,W,H*.27);
-  ctx.fillStyle="#d4c158";
-  for(let i=0;i<8;i++)ctx.fillRect(i*W/8,H*.73,W/16,16);
-  ctx.strokeStyle="#60656b";ctx.lineWidth=8;ctx.beginPath();
-  ctx.moveTo(W*.15,H*.73);ctx.lineTo(W*.15,H*.18);ctx.lineTo(W*.70,H*.18);ctx.stroke();
-  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(W*.15,H*.18);ctx.lineTo(W*.70,H*.42);ctx.stroke();
- }
-}
-function playScreen(){
- playBackground();
- box(14,14,155,54,12,"#17243ddd",null,0);text("TIME "+Math.ceil(timeLeft),91,41,24,"#ffd53d");
- box(W-190,14,176,54,12,"#17243ddd",null,0);text("SCORE "+score,W-102,41,22,"#fff");
- text((stage+1)+" / 4  "+names[stage],W/2,H*.12,23,"#fff");
- text(subtitles[stage],W/2,H*.17,17,"#17314a");
- targets.forEach(t=>{if(t.alive)drawTarget(t);});
- particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life/.7);ctx.fillStyle="#ffd44a";ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
- crosshair();drawCannon();
-}
-function resultScreen(){
- background("#2d77b9","#d9f2ff");
- box(W*.06,H*.07,W*.88,H*.84,26,"#fffffff0");
- text("あなたの家が完成しました！",W/2,H*.16,Math.min(36,W*.052),"#e33f2c");
- text("総合スコア",W*.30,H*.27,20,"#263b52");
- text(finalScore+" 点",W*.30,H*.34,40,"#e6a900");
- const rows=[["基礎",1],["構造",2],["内装",3],["デザイン",4]];
- rows.forEach((r,i)=>{
-  const stars=Math.max(1,Math.min(5,Math.ceil(finalScore/(i===0?900:i===1?1600:i===2?2500:3500))));
-  const y=H*.45+i*42;
-  text(r[0],W*.26,y,20,"#263b52");
-  text("★".repeat(stars)+"☆".repeat(5-stars),W*.55,y,24,"#e6a900");
- });
- const hx=W*.67,hy=H*.67;
- ctx.fillStyle="#e6c7a5";ctx.fillRect(hx-115,hy-85,230,125);
- ctx.fillStyle="#6d4b35";ctx.beginPath();ctx.moveTo(hx-140,hy-85);ctx.lineTo(hx,hy-175);ctx.lineTo(hx+140,hy-85);ctx.closePath();ctx.fill();
- ctx.fillStyle="#8bd4ef";ctx.fillRect(hx-85,hy-55,60,55);ctx.fillRect(hx+25,hy-55,60,55);
- ctx.fillStyle="#65412f";ctx.fillRect(hx-18,hy-55,36,95);
- text("未来の建築家はキミだ！",W*.34,H*.72,17,"#263b52");
- button(W*.18,H*.83,W*.30,55,"もう一度あそぶ");
- button(W*.53,H*.83,W*.30,55,"タイトルへ","#4ca8f5");
-}
-function update(dt){
- if(mode!=="play")return;
- particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=240*dt;p.life-=dt;});
- particles=particles.filter(p=>p.life>0);
- timeLeft-=dt;
- targets.forEach(t=>{
-  if(!t.alive)return;
-  t.x+=t.vx*dt;t.y+=t.vy*dt;
-  if(t.x<t.r||t.x>W-t.r)t.vx*=-1;
-  if(t.y<H*.21||t.y>H*.70)t.vy*=-1;
- });
- if(timeLeft<=0){
-  if(stage<3){startStage(stage+1);}
-  else{finalScore=score;mode="result";}
- }
-}
-function shoot(){
- if(mode!=="play")return;
- let chosen=null,nearest=Infinity;
- targets.forEach(t=>{
-  if(!t.alive)return;
-  const d=Math.hypot(pointer.x-t.x,pointer.y-t.y);
-  if(d<t.r&&d<nearest){nearest=d;chosen=t;}
- });
- if(chosen){
-      chosen.alive=false;score+=chosen.value;buildProgress++;
-      for(let i=0;i<16;i++)particles.push({x:chosen.x,y:chosen.y,vx:(Math.random()-.5)*240,vy:(Math.random()-.5)*240,life:.7,size:3+Math.random()*4});
-    }
- else score=Math.max(0,score-10);
-}
-function movePointer(e){
- const rect=canvas.getBoundingClientRect();
- pointer.x=e.clientX-rect.left;pointer.y=e.clientY-rect.top;
-}
-canvas.addEventListener("pointermove",movePointer);
-canvas.addEventListener("pointerdown",e=>{
- movePointer(e);
- if(mode==="title"){
-  if(pointer.y>H*.53&&pointer.y<H*.65)reset();
-  else if(pointer.y>H*.65&&pointer.y<H*.82)mode="how";
- }else if(mode==="how"){
-  if(pointer.y>H-125)mode="title";
- }else if(mode==="play"){shoot();}
- else if(mode==="result"){
-  if(pointer.y>H*.80&&pointer.x<W*.5)reset();
-  else if(pointer.y>H*.80)mode="title";
- }
-});
-addEventListener("keydown",e=>{
- if(e.code==="Space")shoot();
- if(e.code==="Escape")mode="title";
-});
-let previous=performance.now();
-function loop(now){
- const dt=Math.min((now-previous)/1000,.05);previous=now;
- ctx.clearRect(0,0,W,H);
- if(mode==="title")titleScreen();
- else if(mode==="how")howScreen();
- else if(mode==="play"){update(dt);playScreen();}
- else resultScreen();
- requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
+function finishStage(){if(stageEnd)return;stageEnd=true;running=false;build=clamp(build+Math.floor(stageScore/120),0,100);
+ if(stageIndex<3){stageIndex++;$('title').textContent='STAGE CLEAR!';$('desc').innerHTML=stages[stageIndex-1].name+'<br>今回の得点：'+stageScore+'点';$('start').textContent='次のステージへ';$('start').classList.remove('hidden');$('how').classList.add('hidden');$('message').classList.remove('hidden');$('start').onclick=()=>{startStage();$('message').classList.add('hidden')}}else{showResult()}}
+function showResult(){ $('title').textContent='あなたの家が完成しました！';$('desc').innerHTML='総合スコア：<b style="color:#ffe06a;font-size:30px">'+score+'点</b><br>基礎・構造・内装・デザインを攻略！';$('start').textContent='もう一度あそぶ';$('start').classList.remove('hidden');$('how').classList.add('hidden');$('message').classList.remove('hidden');$('start').onclick=()=>{startGame()}}
+function loop(now){if(!running)return;let dt=Math.min(.04,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop)}
+draw();
 </script>
 </body>
 </html>
