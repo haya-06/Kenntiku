@@ -1,5 +1,3 @@
-# ARCHITECTURE MANIA! Joy-Con対応版
+# ARCHITECTURE MANIA! Joy-Con対応・修正版
 
-Joy-Conスティックで照準、A/Bボタンで発射。タッチ操作も利用できます。
-
-Joy-Conの認識はiPadOS・ブラウザにより異なる場合があります。
+スタートボタンが押せない問題を修正した版です。
